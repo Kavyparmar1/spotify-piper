@@ -2,6 +2,9 @@ import userModel from "../model/user.model.js"
 import bcrypt from 'bcrypt'
 import config from '../config/config.js'
 import jwt from 'jsonwebtoken'
+import {publishToQueue} from '../broker/rabbit.js'
+
+
 export async function registerController(req,res) {
     const{email,password,fullname:{firstName,lastName},role='user'} = req.body
     const isUserAlreadyExist = await userModel.findOne({email})
@@ -25,6 +28,13 @@ export async function registerController(req,res) {
         role:user.role,
         fullname:user.fullname
     },config.JWT_KEY)
+
+    await publishToQueue("user_created",{
+        id:user.id,
+        email:user.email,
+        fullname:user.fullname,
+        role:user.role
+    })
     res.cookie('token',token)
     res.status(201).json({
         message: "User created successfully",
@@ -72,11 +82,18 @@ export async function googleAuthCallback(req,res) {
     googleId:user.id,
     role:'user'
   })
+  await publishToQueue("user_created",{
+    id:newUser.id,
+    email:newUser.email,
+    fullname:newUser.fullname,
+    role: newUser.role
+})
   const token = jwt.sign({
     id:newUser._id,
     fullname:newUser.fullname,
     role:newUser.role
   },config.JWT_KEY)
+
   res.cookie("token", token)
   res.status(201).json({
     message: "User created successfully",
